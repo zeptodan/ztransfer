@@ -4,6 +4,7 @@
 #include<WS2tcpip.h>
 
 #define MAX_BUF 100
+#define PORT 4000
 
 void windowStartup(){
     WSADATA wsadata;
@@ -24,6 +25,68 @@ void* get_addr(struct sockaddr* their_addr){
     else{
         return &(((struct sockaddr_in6*)their_addr)->sin6_addr);
     }
+}
+int broadcast(){
+    struct addrinfo info;
+    struct sockaddr_in their_addr;
+    int sockfd,numbytes, broadcast = 1;
+    if ((sockfd = socket(AF_INET,SOCK_DGRAM,0))==-1){
+        perror("socket");
+        exit(1);
+    }
+    if(setsockopt(sockfd,SOL_SOCKET,SO_BROADCAST,(char *)&broadcast,sizeof broadcast)==-1){
+        perror("socket options(broadcast)");
+        exit(1);
+    }
+    their_addr.sin_family = AF_INET;
+    their_addr.sin_port = htons(PORT);
+    inet_pton(AF_INET,"192.168.1.255",&(their_addr.sin_addr));
+    if ((numbytes = sendto(sockfd,"yo homeboy",10,0,(struct sockaddr*)&their_addr, sizeof their_addr))==-1){
+        perror("sendto");
+        exit(1);
+    }
+    closesocket(sockfd);
+    return 0;
+}
+int listentoBroadcast(char* port){
+    struct addrinfo info, *res, *p;
+    struct sockaddr_storage their_addr;
+    memset(&info,0,sizeof info);
+    info.ai_family = AF_INET;
+    info.ai_socktype = SOCK_DGRAM;
+    info.ai_flags = AI_PASSIVE;
+    char buf[MAX_BUF];
+    int status, bytes;
+    if ((status = getaddrinfo(NULL,port,&info,&res) !=0)){
+        fprintf(stderr,"gai error: %s\n", gai_strerror(status));
+        exit(1);
+    }
+    int sockfd;
+    int yes = 1;
+    for(p = res; p != NULL; p = p->ai_next){
+        if ((sockfd = socket(p->ai_family,p->ai_socktype,p->ai_protocol)) == -1){
+            continue;
+        }
+        if (bind(sockfd,p->ai_addr, p->ai_addrlen)== -1){
+            closesocket(sockfd);
+            continue;
+        }
+        break;
+    }
+    if (p == NULL){
+        printf("could not bind");
+        exit(1);
+    }
+    freeaddrinfo(res);
+    int size = sizeof their_addr;
+    if ((bytes = recvfrom(sockfd,buf,MAX_BUF,0,(struct sockaddr*)&their_addr,&size)) == -1){
+        perror("recvfrom");
+        printf("windows error: %d\n",WSAGetLastError());
+        exit(1);
+    }
+    buf[bytes] = '\0';
+    printf("bytes recv: %s\n", buf);
+    return sockfd;
 }
 int bindtoSocket(char* port){
     struct addrinfo info, *res, *p;
@@ -142,10 +205,14 @@ int main(int argc, char* argv[]){
             closesocket(new_fd);
         }
     }
+    else if (strcmp(argv[1],"broadcast") == 0){
+        broadcast();
+    }
+    else if (strcmp(argv[1],"listen") == 0){
+        listentoBroadcast("4000");
+    }
     else{
         printf("invalid argument\n");
         exit(1);
     }
-    
-
 }
