@@ -2,7 +2,7 @@
 #include<stdio.h>
 #include<WinSock2.h>
 #include<WS2tcpip.h>
-
+#include<pthread.h>
 #define MAX_BUF 100
 #define PORT 4000
 #define STR(x) #x
@@ -109,7 +109,6 @@ int get_tcp_listener(){
         printf("could not bind");
         exit(1);
     }
-    
     freeaddrinfo(res);
     return sockfd;
 }
@@ -130,7 +129,7 @@ int get_tcp_socket(struct sockaddr_storage* their_addr){
     }
     return tcp_fd;
 }
-int discovery(){
+void* discovery(void* arg){
     fd_set my_set;
     int tcp_fd = get_tcp_listener();
     int udp_fd = get_broadcast_socket();
@@ -140,7 +139,7 @@ int discovery(){
     broadcast_addr.sin_family = AF_INET;
     broadcast_addr.sin_port = htons(PORT);
     struct timeval time;
-    int new_fd;
+    int* new_fd = malloc(sizeof(int));
     inet_pton(AF_INET,"192.168.1.255",&(broadcast_addr.sin_addr));
     if (listen(tcp_fd,1)==-1){
         printf("could not listen");
@@ -157,33 +156,23 @@ int discovery(){
             continue;
         }
         else if(FD_ISSET(tcp_fd,&my_set)){
-            if ((new_fd = accept(tcp_fd,(struct sockaddr*)&their_addr,& size)) == -1){
+            if ((*new_fd = accept(tcp_fd,(struct sockaddr*)&their_addr,& size)) == -1){
                 print_error("accept");
                 continue;
             }
             break;
         }
     }
-    char buf[MAX_BUF];
-    int bytes = recv(new_fd,buf,MAX_BUF,0);
-    if(bytes ==0){
-        printf("closed\n");
-    }
-    if(bytes ==-1){
-        printf("windows error: %d",WSAGetLastError());
-    }
-    printf("bytes: %i\n",bytes);
-
-    buf[bytes] = '\0';
-    printf("bytes dude: %s\n",buf);
-    return new_fd;
+    closesocket(udp_fd);
+    closesocket(tcp_fd);
+    return (void*)new_fd;
 }
-int listen_to_discovery(){
+void* listen_to_discovery(void* arg){
     fd_set my_set;
     char buf[MAX_BUF];
     int bytes;
     int udp_fd = get_udp_listener();
-    int tcp_fd;
+    int* tcp_fd = malloc(sizeof(int));
     struct sockaddr_storage their_addr;
     int size = sizeof their_addr;
     struct timeval time;
@@ -211,22 +200,28 @@ int listen_to_discovery(){
         }
     }
     closesocket(udp_fd);
-    int tcp_fd = get_tcp_socket(&their_addr);
-    if (send(tcp_fd,"hell naw",8,0) == -1){
-        print_error("send");
-    }
-    return 0;
+    *tcp_fd = get_tcp_socket(&their_addr);
+    return (void*)tcp_fd;
 }
 int main(int argc, char* argv[]){
     if (argc != 2){
         printf("expected argument ./ztransfer [send | receive]\n");
     }
     window_startup();
+    int* tcp_fd;
+    pthread_t tid;
     if (strcmp(argv[1],"broadcast") == 0){
-        discovery();
+        pthread_create(&tid,NULL,discovery,NULL);
+        pthread_join(tid,(void**)&tcp_fd);
+        if (send(tcp_fd,"hell naw",8,0) == -1){
+            print_error("send");
+        }
+        shutdown(tcp_fd,SD_BOTH);
     }
     else if (strcmp(argv[1],"listen") == 0){
-        listen_to_discovery();
+        pthread_create(&tid,NULL,listen_to_discovery,NULL);
+        pthread_join(tid,(void**)&tcp_fd);
+        shutdown(tcp_fd,SD_BOTH);
     }
     else{
         printf("invalid argument\n");
