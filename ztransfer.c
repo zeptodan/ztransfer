@@ -1,13 +1,23 @@
 #define WIN32_LEAN_AND_MEAN
 #include<stdio.h>
+#include<string.h>
+#include<time.h>
+#include<stdbool.h>
 #include<WinSock2.h>
 #include<WS2tcpip.h>
-#include<pthread.h>
 #define MAX_BUF 100
 #define PORT 4000
+#define MAX_NAME 256
+#define MAX_PEERS 8
 #define STR(x) #x
 #define XSTR(x) STR(x)
 #define PORT_STRING XSTR(PORT)
+typedef struct {
+    struct addr_storage* addr;
+    char* name;
+    time_t time;
+}Broadcast;
+Broadcast broadcasts[MAX_PEERS];
 void print_error(char* msg){
     #ifdef _WIN32
     printf("%s: %d\n",msg,WSAGetLastError());
@@ -59,7 +69,6 @@ int get_udp_listener(){
         exit(1);
     }
     int sockfd;
-    int yes = 1;
     for(p = res; p != NULL; p = p->ai_next){
         if ((sockfd = socket(p->ai_family,p->ai_socktype,p->ai_protocol)) == -1){
             continue;
@@ -129,7 +138,7 @@ int get_tcp_socket(struct sockaddr_storage* their_addr){
     }
     return tcp_fd;
 }
-void* discovery(void* arg){
+int discovery(){
     fd_set my_set;
     int tcp_fd = get_tcp_listener();
     int udp_fd = get_broadcast_socket();
@@ -139,7 +148,14 @@ void* discovery(void* arg){
     broadcast_addr.sin_family = AF_INET;
     broadcast_addr.sin_port = htons(PORT);
     struct timeval time;
-    int* new_fd = malloc(sizeof(int));
+    int new_fd;
+    char* hostname = malloc(MAX_NAME);
+    if (gethostname(hostname,MAX_NAME) == -1){
+        print_error("host name");
+        exit(1);
+    }
+    printf("my name is %s\n",hostname);
+    int name_len = strlen(hostname);
     inet_pton(AF_INET,"192.168.1.255",&(broadcast_addr.sin_addr));
     if (listen(tcp_fd,1)==-1){
         printf("could not listen");
@@ -152,11 +168,11 @@ void* discovery(void* arg){
         time.tv_usec = 0;
         int timer = select(tcp_fd + 1,&my_set,NULL, NULL,&time);
         if (timer == 0){
-            send_udp_packet(udp_fd,&broadcast_addr,"yo homeboy",10);
+            send_udp_packet(udp_fd,&broadcast_addr,hostname,name_len);
             continue;
         }
         else if(FD_ISSET(tcp_fd,&my_set)){
-            if ((*new_fd = accept(tcp_fd,(struct sockaddr*)&their_addr,& size)) == -1){
+            if ((new_fd = accept(tcp_fd,(struct sockaddr*)&their_addr,& size)) == -1){
                 print_error("accept");
                 continue;
             }
@@ -165,14 +181,14 @@ void* discovery(void* arg){
     }
     closesocket(udp_fd);
     closesocket(tcp_fd);
-    return (void*)new_fd;
+    return new_fd;
 }
-void* listen_to_discovery(void* arg){
+int listen_to_discovery(){
     fd_set my_set;
     char buf[MAX_BUF];
     int bytes;
     int udp_fd = get_udp_listener();
-    int* tcp_fd = malloc(sizeof(int));
+    int tcp_fd;
     struct sockaddr_storage their_addr;
     int size = sizeof their_addr;
     struct timeval time;
@@ -200,27 +216,24 @@ void* listen_to_discovery(void* arg){
         }
     }
     closesocket(udp_fd);
-    *tcp_fd = get_tcp_socket(&their_addr);
-    return (void*)tcp_fd;
+    tcp_fd = get_tcp_socket(&their_addr);
+    return tcp_fd;
 }
 int main(int argc, char* argv[]){
     if (argc != 2){
         printf("expected argument ./ztransfer [send | receive]\n");
     }
     window_startup();
-    int* tcp_fd;
-    pthread_t tid;
+    int tcp_fd;
     if (strcmp(argv[1],"broadcast") == 0){
-        pthread_create(&tid,NULL,discovery,NULL);
-        pthread_join(tid,(void**)&tcp_fd);
+        tcp_fd = discovery();
         if (send(tcp_fd,"hell naw",8,0) == -1){
             print_error("send");
         }
         shutdown(tcp_fd,SD_BOTH);
     }
     else if (strcmp(argv[1],"listen") == 0){
-        pthread_create(&tid,NULL,listen_to_discovery,NULL);
-        pthread_join(tid,(void**)&tcp_fd);
+        tcp_fd = listen_to_discovery();
         shutdown(tcp_fd,SD_BOTH);
     }
     else{
