@@ -1,4 +1,6 @@
 #define WIN32_LEAN_AND_MEAN
+#include<windows.h>
+#include<mswsock.h>
 #include<stdio.h>
 #include<string.h>
 #include<time.h>
@@ -13,6 +15,18 @@
 #define STR(x) #x
 #define XSTR(x) STR(x)
 #define PORT_STRING XSTR(PORT)
+#define BUF_SIZE (1 << 15)
+
+typedef BOOL (WINAPI *PFN_TRANSMITFILE)(
+    SOCKET hSocket,
+    HANDLE hFile,
+    DWORD nNumberOfBytesToWrite,
+    DWORD nNumberOfBytesPerSend,
+    LPOVERLAPPED lpOverlapped,
+    LPTRANSMIT_FILE_BUFFERS lpTransmitBuffers,
+    DWORD dwFlags
+);
+
 typedef struct Broadcast{
     struct sockaddr_storage addr;
     char* name;
@@ -151,11 +165,22 @@ int get_tcp_listener(){
     }
     int sockfd;
     int yes = 1;
+    int size = 1 << 20;
     for(p = res; p != NULL; p = p->ai_next){
         if ((sockfd = socket(p->ai_family,p->ai_socktype,p->ai_protocol)) == -1){
             continue;
         }
         if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR,(const char*)&yes,sizeof(int)) == -1){
+            printf("error in sockopt");
+            closesocket(sockfd);
+            exit(1);
+        }
+        if (setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF,(const char*)&size,sizeof(int)) == -1){
+            printf("error in sockopt");
+            closesocket(sockfd);
+            exit(1);
+        }
+        if (setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY,(const char*)&yes,sizeof(int)) == -1){
             printf("error in sockopt");
             closesocket(sockfd);
             exit(1);
@@ -177,13 +202,19 @@ int get_tcp_socket(struct sockaddr_storage* their_addr){
     int tcp_fd;
     struct sockaddr_in connect_addr;
     memset(&connect_addr,0,sizeof connect_addr);
-    connect_addr.sin_family = ((struct sockaddr_in*)&their_addr)->sin_family;
-    connect_addr.sin_addr = ((struct sockaddr_in*)&their_addr)->sin_addr;    
+    connect_addr.sin_family = ((struct sockaddr_in*)their_addr)->sin_family;
+    connect_addr.sin_addr = ((struct sockaddr_in*)their_addr)->sin_addr;    
     connect_addr.sin_port = htons(PORT);
+    int size = 1 << 20;
     if ((tcp_fd = socket(AF_INET,SOCK_STREAM,0)) == -1){
         print_error("socket");
         exit(1);
     }
+    if (setsockopt(tcp_fd, SOL_SOCKET, SO_RCVBUF,(const char*)&size,sizeof(int)) == -1){
+            printf("error in sockopt");
+            closesocket(tcp_fd);
+            exit(1);
+        }
     if (connect(tcp_fd, (struct sockaddr*)&connect_addr,sizeof connect_addr) == -1){
         print_error("connect");
         exit(1);
@@ -269,7 +300,7 @@ int listen_to_discovery(){
             }
             break;
         }
-        list->clean(list);
+        //list->clean(list);
         // if(WaitForSingleObject(h,990) == WAIT_OBJECT_0){
         //     char c = getchar();
         //     printf("i read that: %c\n", c);
@@ -282,6 +313,54 @@ int listen_to_discovery(){
     tcp_fd = get_tcp_socket(&their_addr);
     return tcp_fd;
 }
+int send_file(int tcp_fd){
+    double elapsed_seconds;
+    LARGE_INTEGER freq, start, end;
+    PFN_TRANSMITFILE pTransmitFile;
+    pTransmitFile = (PFN_TRANSMITFILE)GetProcAddress(
+        GetModuleHandleW(L"mswsock.dll"), 
+        "TransmitFile"
+    );
+    HANDLE file = CreateFile("testfile.txt",GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
+    if (file == INVALID_HANDLE_VALUE) {
+        printf("CreateFile failed: %lu\n", GetLastError());
+        return 0;
+    }
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&start);
+    bool ok = pTransmitFile(tcp_fd,file,0,0,NULL,NULL,TF_USE_DEFAULT_WORKER);
+    QueryPerformanceCounter(&end);
+    elapsed_seconds = ((double)(end.QuadPart - start.QuadPart) / freq.QuadPart);
+    printf("average speed send %.9fs\n",elapsed_seconds);
+    if(!ok){
+        print_error("transmit file");
+    }
+    return 0;
+}
+int receive_file(int tcp_fd){
+    double elapsed_seconds;
+    LARGE_INTEGER freq, start, end;
+    PFN_TRANSMITFILE pTransmitFile;
+    pTransmitFile = (PFN_TRANSMITFILE)GetProcAddress(
+        GetModuleHandleW(L"mswsock.dll"), 
+        "TransmitFile"
+    );
+    HANDLE file = CreateFile("testfile.txt",GENERIC_WRITE,0,NULL,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,NULL);
+    if (file == INVALID_HANDLE_VALUE) {
+        printf("CreateFile failed: %lu\n", GetLastError());
+        return 0;
+    }
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&start);
+    bool ok = pTransmitFile(tcp_fd,file,0,0,NULL,NULL,TF_USE_DEFAULT_WORKER);
+    QueryPerformanceCounter(&end);
+    elapsed_seconds = ((double)(end.QuadPart - start.QuadPart) / freq.QuadPart);
+    printf("average speed recv %.9fs\n",elapsed_seconds);
+    if(!ok){
+        print_error("receive file");
+    }
+    return 0;
+}
 int main(int argc, char* argv[]){
     if (argc != 2){
         printf("expected argument ./ztransfer [send | receive]\n");
@@ -290,13 +369,12 @@ int main(int argc, char* argv[]){
     int tcp_fd;
     if (strcmp(argv[1],"broadcast") == 0){
         tcp_fd = discovery();
-        if (send(tcp_fd,"hell naw",8,0) == -1){
-            print_error("send");
-        }
+        send_file(tcp_fd);
         shutdown(tcp_fd,SD_BOTH);
     }
     else if (strcmp(argv[1],"listen") == 0){
         tcp_fd = listen_to_discovery();
+        receive_file(tcp_fd);
         shutdown(tcp_fd,SD_BOTH);
     }
     else{
