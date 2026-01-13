@@ -15,7 +15,7 @@
 #define STR(x) #x
 #define XSTR(x) STR(x)
 #define PORT_STRING XSTR(PORT)
-#define BUF_SIZE (1 << 15)
+#define BUF_SIZE (1 << 16)
 
 typedef BOOL (WINAPI *PFN_TRANSMITFILE)(
     SOCKET hSocket,
@@ -328,37 +328,46 @@ int send_file(int tcp_fd){
     }
     QueryPerformanceFrequency(&freq);
     QueryPerformanceCounter(&start);
-    bool ok = pTransmitFile(tcp_fd,file,0,0,NULL,NULL,TF_USE_DEFAULT_WORKER);
+    bool ok = pTransmitFile(tcp_fd,file,0,0,NULL,NULL,0);
     QueryPerformanceCounter(&end);
     elapsed_seconds = ((double)(end.QuadPart - start.QuadPart) / freq.QuadPart);
-    printf("average speed send %.9fs\n",elapsed_seconds);
+    double speed = 160 / elapsed_seconds;
+    printf("time send %.9fs\n average speed %.9fMB/s\n",elapsed_seconds,speed);
     if(!ok){
         print_error("transmit file");
     }
     return 0;
 }
 int receive_file(int tcp_fd){
+    FILE* file = fopen("testfile.txt","w");
+    char buf[BUF_SIZE];
     double elapsed_seconds;
+    int bytes;
     LARGE_INTEGER freq, start, end;
-    PFN_TRANSMITFILE pTransmitFile;
-    pTransmitFile = (PFN_TRANSMITFILE)GetProcAddress(
-        GetModuleHandleW(L"mswsock.dll"), 
-        "TransmitFile"
-    );
-    HANDLE file = CreateFile("testfile.txt",GENERIC_WRITE,0,NULL,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,NULL);
-    if (file == INVALID_HANDLE_VALUE) {
-        printf("CreateFile failed: %lu\n", GetLastError());
-        return 0;
+    // QueryPerformanceFrequency(&freq);
+    // QueryPerformanceCounter(&start);
+    while (true){
+        QueryPerformanceFrequency(&freq);
+        QueryPerformanceCounter(&start);
+        bytes = recv(tcp_fd,buf,BUF_SIZE,0);
+        QueryPerformanceCounter(&end);
+        elapsed_seconds = ((double)(end.QuadPart - start.QuadPart) / freq.QuadPart);
+        printf("time recv %.9fs\n",elapsed_seconds);
+        if(bytes == 0){
+            break;
+        }
+        QueryPerformanceFrequency(&freq);
+        QueryPerformanceCounter(&start);
+        fwrite(buf,sizeof(char),bytes,file);
+        QueryPerformanceCounter(&end);
+        elapsed_seconds = ((double)(end.QuadPart - start.QuadPart) / freq.QuadPart);
+        printf("time write %.9fs\n",elapsed_seconds);
     }
-    QueryPerformanceFrequency(&freq);
-    QueryPerformanceCounter(&start);
-    bool ok = pTransmitFile(tcp_fd,file,0,0,NULL,NULL,TF_USE_DEFAULT_WORKER);
-    QueryPerformanceCounter(&end);
-    elapsed_seconds = ((double)(end.QuadPart - start.QuadPart) / freq.QuadPart);
-    printf("average speed recv %.9fs\n",elapsed_seconds);
-    if(!ok){
-        print_error("receive file");
-    }
+    // QueryPerformanceCounter(&end);
+    // elapsed_seconds = ((double)(end.QuadPart - start.QuadPart) / freq.QuadPart);
+    // double speed = 160 / elapsed_seconds;
+    // printf("time recv %.9fs\n average speed %.9fMB/s\n",elapsed_seconds,speed);
+    fclose(file);
     return 0;
 }
 int main(int argc, char* argv[]){
