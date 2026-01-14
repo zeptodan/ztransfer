@@ -1,109 +1,5 @@
-#define WIN32_LEAN_AND_MEAN
-#include<windows.h>
-#include<mswsock.h>
-#include<stdio.h>
-#include<string.h>
-#include<time.h>
-#include<stdbool.h>
-#include<WinSock2.h>
-#include<WS2tcpip.h>
-#define MAX_BUF 256
-#define PORT 4000
-#define MAX_NAME MAX_BUF
-#define MAX_PEERS 8
-#define TIMEOUT 3
-#define STR(x) #x
-#define XSTR(x) STR(x)
-#define PORT_STRING XSTR(PORT)
-#define BUF_SIZE (1 << 16)
+#include"ztransfer-lib.h"
 
-typedef BOOL (WINAPI *PFN_TRANSMITFILE)(
-    SOCKET hSocket,
-    HANDLE hFile,
-    DWORD nNumberOfBytesToWrite,
-    DWORD nNumberOfBytesPerSend,
-    LPOVERLAPPED lpOverlapped,
-    LPTRANSMIT_FILE_BUFFERS lpTransmitBuffers,
-    DWORD dwFlags
-);
-
-typedef struct Broadcast{
-    struct sockaddr_storage addr;
-    char* name;
-    time_t time;
-    bool (*is_old)(struct Broadcast*);
-}Broadcast;
-typedef struct BroadcastList{
-    Broadcast broadcasts[MAX_PEERS];
-    int size;
-    int (*add)(struct BroadcastList*,struct sockaddr_storage, char*);
-    int (*clean)(struct BroadcastList*);
-    int (*list_free)(struct BroadcastList*);
-} BroadcastList;
-bool is_old(Broadcast* self){
-    return time(NULL) - self->time > TIMEOUT;
-}
-bool check_broadcast_same(struct sockaddr_storage* addr1,struct sockaddr_storage* addr2){
-    return memcmp((&((struct sockaddr_in*)addr1)->sin_addr.S_un.S_addr),&(((struct sockaddr_in*)addr2)->sin_addr.S_un.S_addr), sizeof(((struct sockaddr_in*)addr2)->sin_addr.S_un.S_addr));
-}
-int add(BroadcastList* self,struct sockaddr_storage addr, char* name){
-    for (int i = 0;i < self->size;i++){
-        if(check_broadcast_same(&self->broadcasts[i].addr,&addr) == 0){
-            self->broadcasts[i].time = time(NULL);
-            return 0;
-        }
-    }
-    if (self->size < MAX_PEERS){
-        Broadcast broadcast = {addr,name,time(NULL),is_old};
-        self->broadcasts[self->size++] = broadcast;
-        return 0;
-    }
-    return -1;
-}
-int clean(BroadcastList* self){
-    for (int i = 0;i < self->size;i++){
-        if (self->broadcasts[i].is_old(&self->broadcasts[i])){
-            memmove(&self->broadcasts[i],&self->broadcasts[i+1],self->size - i - 1);
-            self->size--;
-        }
-    }
-    return 0;
-}
-int list_free(BroadcastList* self){
-    for (int i = 0;i < self->size;i++){
-        free(self->broadcasts[i].name);
-    }
-    free(self);
-    return 0;
-}
-BroadcastList* list_constructor(){
-    BroadcastList* list = malloc(sizeof(BroadcastList));
-    list->size = 0;
-    list->clean = clean;
-    list->list_free = list_free;
-    list->add = add;
-    return list;
-}
-void print_error(char* msg){
-    #ifdef _WIN32
-    printf("%s: %d\n",msg,WSAGetLastError());
-    #else
-    printf("%s",msg);
-    perror("");
-    #endif
-}
-void window_startup(){
-    WSADATA wsadata;
-    if (WSAStartup(MAKEWORD(2,2),&wsadata) !=0){
-        fprintf(stderr, "WSAStartup failed\n");
-        exit(1);
-    }
-    if (LOBYTE(wsadata.wVersion) != 2 || HIBYTE(wsadata.wVersion) != 2){
-        fprintf(stderr, "version 2.2 of WinSock not available.\n");
-        WSACleanup();
-        exit(2);
-    }
-}
 int get_broadcast_socket(){
     int sockfd, broadcast = 1;
     if ((sockfd = socket(AF_INET,SOCK_DGRAM,0))==-1){
@@ -314,28 +210,65 @@ int listen_to_discovery(){
     return tcp_fd;
 }
 int send_file(int tcp_fd){
+    char buf[BUF_SIZE];
     double elapsed_seconds;
+    int bytes;
     LARGE_INTEGER freq, start, end;
-    PFN_TRANSMITFILE pTransmitFile;
-    pTransmitFile = (PFN_TRANSMITFILE)GetProcAddress(
-        GetModuleHandleW(L"mswsock.dll"), 
-        "TransmitFile"
-    );
-    HANDLE file = CreateFile("testfile.txt",GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
-    if (file == INVALID_HANDLE_VALUE) {
-        printf("CreateFile failed: %lu\n", GetLastError());
-        return 0;
-    }
     QueryPerformanceFrequency(&freq);
     QueryPerformanceCounter(&start);
-    bool ok = pTransmitFile(tcp_fd,file,0,0,NULL,NULL,0);
+    int i = 0;
+    while (i < 2560){
+        // QueryPerformanceFrequency(&freq);
+        // QueryPerformanceCounter(&start);
+        bytes = send(tcp_fd,buf,BUF_SIZE,0);
+        // QueryPerformanceCounter(&end);
+        // elapsed_seconds = ((double)(end.QuadPart - start.QuadPart) / freq.QuadPart);
+        // printf("time recv %.9fs\n",elapsed_seconds);
+        // printf("bytes %f\n",bytes / 1024.0);
+        i++;
+        // QueryPerformanceFrequency(&freq);
+        // QueryPerformanceCounter(&start);
+        // fwrite(buf,sizeof(char),bytes,file);
+        // QueryPerformanceCounter(&end);
+        // elapsed_seconds = ((double)(end.QuadPart - start.QuadPart) / freq.QuadPart);
+        // printf("time write %.9fs\n",elapsed_seconds);
+    }
     QueryPerformanceCounter(&end);
     elapsed_seconds = ((double)(end.QuadPart - start.QuadPart) / freq.QuadPart);
     double speed = 160 / elapsed_seconds;
     printf("time send %.9fs\n average speed %.9fMB/s\n",elapsed_seconds,speed);
-    if(!ok){
-        print_error("transmit file");
-    }
+    // u_long mode = 1;
+    // ioctlsocket(tcp_fd, FIONBIO, &mode);
+    // double elapsed_seconds;
+    // LARGE_INTEGER freq, start, end;
+    // PFN_TRANSMITFILE pTransmitFile;
+    // pTransmitFile = (PFN_TRANSMITFILE)GetProcAddress(
+    //     GetModuleHandleW(L"mswsock.dll"), 
+    //     "TransmitFile"
+    // );
+    // HANDLE file = CreateFile("testfile.txt",GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
+    // if (file == INVALID_HANDLE_VALUE) {
+    //     printf("CreateFile failed: %lu\n", GetLastError());
+    //     return 0;
+    // }
+    // OVERLAPPED ov = {0};
+    // ov.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+    // QueryPerformanceFrequency(&freq);
+    // QueryPerformanceCounter(&start);
+
+    // bool ok = pTransmitFile(tcp_fd,file,0,0,&ov,NULL,TF_USE_KERNEL_APC);
+    // printf("something\n");
+    // WaitForSingleObject(ov.hEvent, INFINITE);
+    // DWORD ignored;
+    // GetOverlappedResult((HANDLE)tcp_fd, &ov, &ignored, FALSE);
+
+    // QueryPerformanceCounter(&end);
+    // elapsed_seconds = ((double)(end.QuadPart - start.QuadPart) / freq.QuadPart);
+    // double speed = 160 / elapsed_seconds;
+    // printf("time send %.9fs\n average speed %.9fMB/s\n",elapsed_seconds,speed);
+    // if(!ok){
+    //     print_error("transmit file");
+    // }
     return 0;
 }
 int receive_file(int tcp_fd){
@@ -344,29 +277,30 @@ int receive_file(int tcp_fd){
     double elapsed_seconds;
     int bytes;
     LARGE_INTEGER freq, start, end;
-    // QueryPerformanceFrequency(&freq);
-    // QueryPerformanceCounter(&start);
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&start);
     while (true){
-        QueryPerformanceFrequency(&freq);
-        QueryPerformanceCounter(&start);
+        // QueryPerformanceFrequency(&freq);
+        // QueryPerformanceCounter(&start);
         bytes = recv(tcp_fd,buf,BUF_SIZE,0);
-        QueryPerformanceCounter(&end);
-        elapsed_seconds = ((double)(end.QuadPart - start.QuadPart) / freq.QuadPart);
-        printf("time recv %.9fs\n",elapsed_seconds);
+        // QueryPerformanceCounter(&end);
+        // elapsed_seconds = ((double)(end.QuadPart - start.QuadPart) / freq.QuadPart);
+        // printf("time recv %.9fs\n",elapsed_seconds);
+        // printf("bytes %f\n",bytes / 1024.0);
         if(bytes == 0){
             break;
         }
-        QueryPerformanceFrequency(&freq);
-        QueryPerformanceCounter(&start);
-        fwrite(buf,sizeof(char),bytes,file);
-        QueryPerformanceCounter(&end);
-        elapsed_seconds = ((double)(end.QuadPart - start.QuadPart) / freq.QuadPart);
-        printf("time write %.9fs\n",elapsed_seconds);
+        // QueryPerformanceFrequency(&freq);
+        // QueryPerformanceCounter(&start);
+        // fwrite(buf,sizeof(char),bytes,file);
+        // QueryPerformanceCounter(&end);
+        // elapsed_seconds = ((double)(end.QuadPart - start.QuadPart) / freq.QuadPart);
+        // printf("time write %.9fs\n",elapsed_seconds);
     }
-    // QueryPerformanceCounter(&end);
-    // elapsed_seconds = ((double)(end.QuadPart - start.QuadPart) / freq.QuadPart);
-    // double speed = 160 / elapsed_seconds;
-    // printf("time recv %.9fs\n average speed %.9fMB/s\n",elapsed_seconds,speed);
+    QueryPerformanceCounter(&end);
+    elapsed_seconds = ((double)(end.QuadPart - start.QuadPart) / freq.QuadPart);
+    double speed = 160 / elapsed_seconds;
+    printf("time recv %.9fs\n average speed %.9fMB/s\n",elapsed_seconds,speed);
     fclose(file);
     return 0;
 }
