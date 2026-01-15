@@ -18,6 +18,11 @@ typedef BOOL (WINAPI *PFN_TRANSMITFILE)(
     DWORD dwFlags
 );
 #else
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <arpa/inet.h>
 #endif
 #define MAX_BUF 256
 #define PORT 4000
