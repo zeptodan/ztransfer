@@ -3,7 +3,11 @@ bool is_old(Broadcast* self){
     return time(NULL) - self->time > TIMEOUT;
 }
 bool check_broadcast_same(struct sockaddr_storage* addr1,struct sockaddr_storage* addr2){
+    #ifdef _WIN32
     return memcmp((&((struct sockaddr_in*)addr1)->sin_addr.S_un.S_addr),&(((struct sockaddr_in*)addr2)->sin_addr.S_un.S_addr), sizeof(((struct sockaddr_in*)addr2)->sin_addr.S_un.S_addr));
+    #else
+    return memcmp((&((struct sockaddr_in*)addr1)->sin_addr.s_addr),&(((struct sockaddr_in*)addr2)->sin_addr.s_addr), sizeof(((struct sockaddr_in*)addr2)->sin_addr.s_addr));
+    #endif
 }
 int add(BroadcastList* self,struct sockaddr_storage addr, char* name){
     for (int i = 0;i < self->size;i++){

@@ -6,3 +6,7 @@ void print_error(char* msg){
 void window_startup(){
     return;
 }
+int close_socket(int socket){
+    close(socket);
+    return 0;
+}

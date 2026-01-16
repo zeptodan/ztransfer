@@ -1,5 +1,27 @@
 #include"ztransfer-lib.h"
-
+#ifdef DEBUG
+#ifdef _WIN32
+#define START_TIMER(name) double name##_elapsed_seconds; \
+    LARGE_INTEGER name##_freq, name##_start, name##_end; \
+    QueryPerformanceFrequency(&name##_freq); \
+    QueryPerformanceCounter(&name##_start);
+#define END_TIMER(name) QueryPerformanceCounter(&name##_end); \
+    name##_elapsed_seconds = ((double)(name##_end.QuadPart - name##_start.QuadPart) / name##_freq.QuadPart); \
+    double name##_speed = 160 / name##_elapsed_seconds; \
+    printf("time recv %.9fs\n average speed %.9fMB/s\n",name##_elapsed_seconds,name##_speed);
+#else
+#define START_TIMER(name) double name##_elapsed_seconds; \
+    struct timespec name##_start, name##_end; \
+    clock_gettime(CLOCK_MONOTONIC, &name##_start);
+#define END_TIMER(name) clock_gettime(CLOCK_MONOTONIC, &name##_end); \
+    name##_elapsed_seconds = (((name##_end.tv_sec - name##_start.tv_sec) * 1000000000ULL)+(name##_end.tv_nsec - name##_start.tv_nsec)) / 1e9; \
+    double name##_speed = 160 / name##_elapsed_seconds; \
+    printf("time recv %lds\n average speed %.9fMB/s\n",name##_elapsed_seconds,name##_speed);
+#endif
+#else
+#define START_TIMER(name)
+#define END_TIMER(name)
+#endif
 int get_broadcast_socket(){
     int sockfd, broadcast = 1;
     if ((sockfd = socket(AF_INET,SOCK_DGRAM,0))==-1){
@@ -36,7 +58,7 @@ int get_udp_listener(){
             continue;
         }
         if (bind(sockfd,p->ai_addr, p->ai_addrlen)== -1){
-            closesocket(sockfd);
+            close_socket(sockfd);
             continue;
         }
         break;
@@ -68,21 +90,21 @@ int get_tcp_listener(){
         }
         if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR,(const char*)&yes,sizeof(int)) == -1){
             printf("error in sockopt");
-            closesocket(sockfd);
+            close_socket(sockfd);
             exit(1);
         }
         if (setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF,(const char*)&size,sizeof(int)) == -1){
             printf("error in sockopt");
-            closesocket(sockfd);
+            close_socket(sockfd);
             exit(1);
         }
         if (setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY,(const char*)&yes,sizeof(int)) == -1){
             printf("error in sockopt");
-            closesocket(sockfd);
+            close_socket(sockfd);
             exit(1);
         }
         if (bind(sockfd,p->ai_addr, p->ai_addrlen)== -1){
-            closesocket(sockfd);
+            close_socket(sockfd);
             continue;
         }
         break;
@@ -108,7 +130,7 @@ int get_tcp_socket(struct sockaddr_storage* their_addr){
     }
     if (setsockopt(tcp_fd, SOL_SOCKET, SO_RCVBUF,(const char*)&size,sizeof(int)) == -1){
             printf("error in sockopt");
-            closesocket(tcp_fd);
+            close_socket(tcp_fd);
             exit(1);
         }
     if (connect(tcp_fd, (struct sockaddr*)&connect_addr,sizeof connect_addr) == -1){
@@ -140,7 +162,6 @@ int discovery(){
         printf("could not listen");
         exit(1);
     }
-    HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
     while(1){
         FD_ZERO(&my_set);
         FD_SET(tcp_fd,&my_set);
@@ -155,13 +176,9 @@ int discovery(){
             }
             break;
         }
-        // if(WaitForSingleObject(h,990)== WAIT_OBJECT_0){
-        //     char c = getchar();
-        //     printf("i read that: %c\n", c);
-        // }
     }
-    closesocket(udp_fd);
-    closesocket(tcp_fd);
+    close_socket(udp_fd);
+    close_socket(tcp_fd);
     return new_fd;
 }
 int listen_to_discovery(){
@@ -173,7 +190,6 @@ int listen_to_discovery(){
     struct sockaddr_storage their_addr;
     int size = sizeof their_addr;
     struct timeval time;
-    HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
     BroadcastList* list = list_constructor();
     while(1){
         FD_ZERO(&my_set);
@@ -197,25 +213,16 @@ int listen_to_discovery(){
             break;
         }
         //list->clean(list);
-        // if(WaitForSingleObject(h,990) == WAIT_OBJECT_0){
-        //     char c = getchar();
-        //     printf("i read that: %c\n", c);
-        //     if(c == 'q')
-        //         break;
-        // }
     }
-    closesocket(udp_fd);
+    close_socket(udp_fd);
     list->list_free(list);
     tcp_fd = get_tcp_socket(&their_addr);
     return tcp_fd;
 }
 int send_file(int tcp_fd){
     char buf[BUF_SIZE];
-    double elapsed_seconds;
     int bytes;
-    LARGE_INTEGER freq, start, end;
-    QueryPerformanceFrequency(&freq);
-    QueryPerformanceCounter(&start);
+    START_TIMER(timer1);
     int i = 0;
     while (i < 2560){
         // QueryPerformanceFrequency(&freq);
@@ -233,10 +240,7 @@ int send_file(int tcp_fd){
         // elapsed_seconds = ((double)(end.QuadPart - start.QuadPart) / freq.QuadPart);
         // printf("time write %.9fs\n",elapsed_seconds);
     }
-    QueryPerformanceCounter(&end);
-    elapsed_seconds = ((double)(end.QuadPart - start.QuadPart) / freq.QuadPart);
-    double speed = 160 / elapsed_seconds;
-    printf("time send %.9fs\n average speed %.9fMB/s\n",elapsed_seconds,speed);
+    END_TIMER(timer1);
     // u_long mode = 1;
     // ioctlsocket(tcp_fd, FIONBIO, &mode);
     // double elapsed_seconds;
@@ -274,11 +278,8 @@ int send_file(int tcp_fd){
 int receive_file(int tcp_fd){
     FILE* file = fopen("testfile.txt","w");
     char buf[BUF_SIZE];
-    double elapsed_seconds;
     int bytes;
-    LARGE_INTEGER freq, start, end;
-    QueryPerformanceFrequency(&freq);
-    QueryPerformanceCounter(&start);
+    START_TIMER(timer1);
     while (true){
         // QueryPerformanceFrequency(&freq);
         // QueryPerformanceCounter(&start);
@@ -297,10 +298,7 @@ int receive_file(int tcp_fd){
         // elapsed_seconds = ((double)(end.QuadPart - start.QuadPart) / freq.QuadPart);
         // printf("time write %.9fs\n",elapsed_seconds);
     }
-    QueryPerformanceCounter(&end);
-    elapsed_seconds = ((double)(end.QuadPart - start.QuadPart) / freq.QuadPart);
-    double speed = 160 / elapsed_seconds;
-    printf("time recv %.9fs\n average speed %.9fMB/s\n",elapsed_seconds,speed);
+    END_TIMER(timer1);
     fclose(file);
     return 0;
 }
@@ -313,12 +311,12 @@ int main(int argc, char* argv[]){
     if (strcmp(argv[1],"broadcast") == 0){
         tcp_fd = discovery();
         send_file(tcp_fd);
-        shutdown(tcp_fd,SD_BOTH);
+        shutdown(tcp_fd,SHUTDOWN_BOTH);
     }
     else if (strcmp(argv[1],"listen") == 0){
         tcp_fd = listen_to_discovery();
         receive_file(tcp_fd);
-        shutdown(tcp_fd,SD_BOTH);
+        shutdown(tcp_fd,SHUTDOWN_BOTH);
     }
     else{
         printf("invalid argument\n");

@@ -2,3 +2,4 @@ ztransfer.exe
 .vscode
 testfile.txt
 createfile.c
+build/

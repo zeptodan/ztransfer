@@ -2,12 +2,14 @@
 #include<stdbool.h>
 #include<string.h>
 #include<time.h>
+#include<stdlib.h>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include<windows.h>
 #include<mswsock.h>
 #include<WinSock2.h>
 #include<WS2tcpip.h>
+#define SHUTDOWN_BOTH SD_BOTH
 typedef BOOL (WINAPI *PFN_TRANSMITFILE)(
     SOCKET hSocket,
     HANDLE hFile,
@@ -18,11 +20,14 @@ typedef BOOL (WINAPI *PFN_TRANSMITFILE)(
     DWORD dwFlags
 );
 #else
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h>
-#include <arpa/inet.h>
+#include<sys/types.h>
+#include<sys/socket.h>
+#include<netinet/in.h>
+#include<netinet/tcp.h>
+#include<netdb.h>
+#include<arpa/inet.h>
+#include<unistd.h>
+#define SHUTDOWN_BOTH SHUT_RDWR
 #endif
 #define MAX_BUF 256
 #define PORT 4000
@@ -56,3 +61,4 @@ int add(BroadcastList* self,struct sockaddr_storage addr, char* name);
 int clean(BroadcastList* self);
 int list_free(BroadcastList* self);
 BroadcastList* list_constructor();
+int close_socket(int socket);

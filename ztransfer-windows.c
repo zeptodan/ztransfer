@@ -14,3 +14,7 @@ void window_startup(){
         exit(2);
     }
 }
+int close_socket(int socket){
+    closesocket(socket);
+    return 0;
+}
