@@ -1,4 +1,5 @@
 #include<stdio.h>
+#include<stdint.h>
 #include<stdbool.h>
 #include<string.h>
 #include<time.h>
@@ -10,6 +11,7 @@
 #include<WinSock2.h>
 #include<WS2tcpip.h>
 #define SHUTDOWN_BOTH SD_BOTH
+#define SEP '\\'
 typedef BOOL (WINAPI *PFN_TRANSMITFILE)(
     SOCKET hSocket,
     HANDLE hFile,
@@ -28,6 +30,7 @@ typedef BOOL (WINAPI *PFN_TRANSMITFILE)(
 #include<arpa/inet.h>
 #include<unistd.h>
 #define SHUTDOWN_BOTH SHUT_RDWR
+#define SEP '/'
 #endif
 #define MAX_BUF 256
 #define PORT 4000
@@ -38,7 +41,12 @@ typedef BOOL (WINAPI *PFN_TRANSMITFILE)(
 #define XSTR(x) STR(x)
 #define PORT_STRING XSTR(PORT)
 #define BUF_SIZE (1 << 16)
-
+#define METADATA (sizeof(uint64_t) +sizeof(uint32_t) + 1)
+typedef struct Metadata{
+    uint64_t size;
+    char is_file;
+    char* path;
+} Metadata;
 typedef struct Broadcast{
     struct sockaddr_storage* addr;
     char* name;
