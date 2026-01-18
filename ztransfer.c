@@ -1,27 +1,4 @@
 #include"ztransfer-lib.h"
-#ifdef DEBUG
-#ifdef _WIN32
-#define START_TIMER(name) double name##_elapsed_seconds; \
-    LARGE_INTEGER name##_freq, name##_start, name##_end; \
-    QueryPerformanceFrequency(&name##_freq); \
-    QueryPerformanceCounter(&name##_start);
-#define END_TIMER(name) QueryPerformanceCounter(&name##_end); \
-    name##_elapsed_seconds = ((double)(name##_end.QuadPart - name##_start.QuadPart) / name##_freq.QuadPart); \
-    double name##_speed = 160 / name##_elapsed_seconds; \
-    printf("time recv %.9fs\n average speed %.9fMB/s\n",name##_elapsed_seconds,name##_speed);
-#else
-#define START_TIMER(name) double name##_elapsed_seconds; \
-    struct timespec name##_start, name##_end; \
-    clock_gettime(CLOCK_MONOTONIC, &name##_start);
-#define END_TIMER(name) clock_gettime(CLOCK_MONOTONIC, &name##_end); \
-    name##_elapsed_seconds = (((name##_end.tv_sec - name##_start.tv_sec) * 1000000000ULL)+(name##_end.tv_nsec - name##_start.tv_nsec)) / 1e9; \
-    double name##_speed = 160 / name##_elapsed_seconds; \
-    printf("time recv %.9fs\n average speed %.9fMB/s\n",name##_elapsed_seconds,name##_speed);
-#endif
-#else
-#define START_TIMER(name)
-#define END_TIMER(name)
-#endif
 char buf[BUF_SIZE];
 int get_broadcast_socket(){
     int sockfd, broadcast = 1;
@@ -227,9 +204,7 @@ int send_metadata(char is_file,int tcp_fd,char* path){
     }
     *buf = is_file;
     if (is_file){
-        WIN32_FILE_ATTRIBUTE_DATA file_data;
-        GetFileAttributesExA(path, GetFileExInfoStandard, &file_data);
-        uint64_t size = htonll(((uint64_t)file_data.nFileSizeHigh << 32) | file_data.nFileSizeLow);
+        uint64_t size = get_file_size(path);
         memcpy(buf + 1,&size,sizeof(uint64_t));
     }
     uint32_t len = strlen(path)-abs_len;
@@ -238,81 +213,6 @@ int send_metadata(char is_file,int tcp_fd,char* path){
     strcpy(buf + sizeof(uint64_t) + sizeof(uint32_t) + 1,path + abs_len);
     uint32_t size = len + sizeof(uint64_t) + sizeof(uint32_t) + 1;
     send(tcp_fd,buf,size,0);
-}
-int send_file(int tcp_fd,char* path){
-    // char buf[BUF_SIZE];
-    // int bytes;
-    // int read;
-    // START_TIMER(timer1);
-    // FILE* file = fopen("testfile.txt","r");
-    // while (true){
-    //     // QueryPerformanceFrequency(&freq);
-    //     // QueryPerformanceCounter(&start);
-    //     int read = fread(buf,sizeof(char),BUF_SIZE,file);
-    //     if (read == 0){
-    //         break;
-    //     }
-    //     bytes = send(tcp_fd,buf,read,0);
-    //     // QueryPerformanceCounter(&end);
-    //     // elapsed_seconds = ((double)(end.QuadPart - start.QuadPart) / freq.QuadPart);
-    //     // printf("time recv %.9fs\n",elapsed_seconds);
-    //     // printf("bytes %f\n",bytes / 1024.0);
-    //     // QueryPerformanceFrequency(&freq);
-    //     // QueryPerformanceCounter(&start);
-    //     // fwrite(buf,sizeof(char),bytes,file);
-    //     // QueryPerformanceCounter(&end);
-    //     // elapsed_seconds = ((double)(end.QuadPart - start.QuadPart) / freq.QuadPart);
-    //     // printf("time write %.9fs\n",elapsed_seconds);
-    // }
-    // END_TIMER(timer1);
-    send_metadata(1,tcp_fd,path);
-
-    u_long mode = 1;
-    ioctlsocket(tcp_fd, FIONBIO, &mode);
-    PFN_TRANSMITFILE pTransmitFile;
-    pTransmitFile = (PFN_TRANSMITFILE)GetProcAddress(
-        GetModuleHandleW(L"mswsock.dll"), 
-        "TransmitFile"
-    );
-    HANDLE file = CreateFile(path,GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
-    if (file == INVALID_HANDLE_VALUE) {
-        printf("CreateFile failed: %lu\n", GetLastError());
-        return 0;
-    }
-    OVERLAPPED ov = {0};
-    ov.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
-    START_TIMER(timer1);
-    bool ok = pTransmitFile(tcp_fd,file,0,0,&ov,NULL,TF_USE_KERNEL_APC);
-    WaitForSingleObject(ov.hEvent, INFINITE);
-    DWORD ignored;
-    GetOverlappedResult((HANDLE)tcp_fd, &ov, &ignored, FALSE);
-    END_TIMER(timer1);
-    if(!ok){
-        print_error("transmit file");
-        exit(1);
-    }
-    return 0;
-}
-int send_folder(int tcp_fd,char* path){
-    send_metadata(0,tcp_fd,path);
-    WIN32_FIND_DATAA f;
-    HANDLE h = FindFirstFileA(path,&f);
-    char* path_with_name;
-    do {
-        if (!strcmp(f.cFileName, ".") || !strcmp(f.cFileName, ".."))
-            continue;
-        path_with_name = malloc(strlen(path) + strlen(f.cFileName) + 2);
-        strcpy(path_with_name,path);
-        path_with_name[strlen(path)] = SEP;
-        strcpy(path_with_name + strlen(path) + 1,f.cFileName);
-        if (f.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY){
-            send_folder(tcp_fd,path_with_name);
-        }
-        else{
-            send_file(tcp_fd,path_with_name);
-        }
-        free(path_with_name);
-    }while(FindNextFileA(h,&f));
 }
 Metadata receive_metadata(int tcp_fd){
     int read = 0;
@@ -330,7 +230,7 @@ Metadata receive_metadata(int tcp_fd){
     char is_file = *buf;
     uint64_t size;
     memcpy(&size,buf + 1, sizeof(uint64_t));
-    size = ntohll(size);
+    size = my_ntohll(size);
     uint32_t len;
     memcpy(&len,buf + sizeof(uint64_t) + 1,sizeof(uint32_t));
     read = 0;
@@ -349,23 +249,12 @@ int receive_file(int tcp_fd,uint64_t size,char* path){
     int bytes;
     START_TIMER(timer1);
     while (tot_bytes !=size){
-        // QueryPerformanceFrequency(&freq);
-        // QueryPerformanceCounter(&start);
         bytes = recv(tcp_fd,buf,BUF_SIZE,0);
-        // QueryPerformanceCounter(&end);
-        // elapsed_seconds = ((double)(end.QuadPart - start.QuadPart) / freq.QuadPart);
-        // printf("time recv %.9fs\n",elapsed_seconds);
-        // printf("bytes %f\n",bytes / 1024.0);
         if(bytes == 0){
             break;
         }
-        // QueryPerformanceFrequency(&freq);
-        // QueryPerformanceCounter(&start);
         fwrite(buf,sizeof(char),bytes,file);
         tot_bytes += bytes;
-        // QueryPerformanceCounter(&end);
-        // elapsed_seconds = ((double)(end.QuadPart - start.QuadPart) / freq.QuadPart);
-        // printf("time write %.9fs\n",elapsed_seconds);
     }
     END_TIMER(timer1);
     fclose(file);
@@ -387,7 +276,7 @@ int receive_folder(int tcp_fd,char* path){
             receive_file(tcp_fd,data.size,path_with_name);
         }
         else{
-            CreateDirectoryA(data.path,NULL);
+            create_folder(data.path);
         }
         free(path_with_name);
     }
