@@ -14,11 +14,60 @@ uint64_t get_file_size(char* path){
     return be64toh();
 }
 int create_folder(char* path){
+    mkdir(path, 0755);
     return 0;
 }
 int send_file(int tcp_fd,char* path){
     send_metadata(1,tcp_fd,path);
+    int fd = open(path,O_RDONLY);
+    off_t offset = 0;
+    struct stat st;
+    stat(path,&st);
+    off_t size = st.st_size;
+    int n;
+    while(offset < size){
+        n = sendfile(tcp_fd,fd,&offset,size - offset);
+        if (n <=0){
+            print_error("sendfile");
+            exit(1);
+        }
+    }
+    return 0;
 }
 int send_folder(int tcp_fd,char* path){
     send_metadata(0,tcp_fd,path);
+    DIR* d = opendir(path);
+    struct dirent *e;
+    struct stat st;
+    char* path_with_name;
+    while(e = readdir(d)){
+        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, ".."))
+        continue;
+        path_with_name = malloc(strlen(path) + strlen(e->d_name) + 2);
+        strcpy(path_with_name,path);
+        path_with_name[strlen(path)] = SEP;
+        strcpy(path_with_name + strlen(path) + 1,e->d_name);
+        stat(path_with_name,&st);
+        if (S_ISDIR(st.st_mode)){
+            send_folder(tcp_fd,path_with_name);
+        }
+        else{
+            send_file(tcp_fd,path_with_name);
+        }
+    }
+    return 0;
+}
+bool is_folder(char* path){
+    struct stat st;
+    stat(path,&st);
+    if (S_ISDIR(st.st_mode)){
+        return true;
+    }
+    else if(S_ISREG(st.st_mode)){
+        return false;
+    }
+    else{
+        print_error("invalid path");
+        exit(1);
+    }
 }

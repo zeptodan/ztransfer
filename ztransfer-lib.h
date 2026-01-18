@@ -48,12 +48,17 @@ typedef BOOL (WINAPI *PFN_TRANSMITFILE)(
 #else
 #include<sys/types.h>
 #include<sys/socket.h>
+#include<sys/stat.h>
+#include<sys/sendfile.h>
+#include<sys/select.h>
 #include<netinet/in.h>
 #include<netinet/tcp.h>
 #include<netdb.h>
 #include<arpa/inet.h>
 #include<unistd.h>
 #include<endian.h>
+#include<dirent.h>
+#include<fcntl.h>
 #define SHUTDOWN_BOTH SHUT_RDWR
 #define SEP '/'
 #define my_ntohll(number) htobe64(number)
@@ -107,3 +112,4 @@ int create_folder(char* path);
 int send_file(int tcp_fd,char* path);
 int send_folder(int tcp_fd,char* path);
 int send_metadata(char is_file,int tcp_fd,char* path);
+bool is_folder(char* path);

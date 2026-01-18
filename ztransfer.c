@@ -48,6 +48,7 @@ int get_udp_listener(){
     freeaddrinfo(res);
     return sockfd;
 }
+
 int get_tcp_listener(){
     struct addrinfo info, *res, *p;
     memset(&info,0,sizeof info);
@@ -290,11 +291,7 @@ int main(int argc, char* argv[]){
     int tcp_fd;
     if (strcmp(argv[1],"broadcast") == 0){
         tcp_fd = discovery();
-        DWORD attr = GetFileAttributesA(argv[2]);
-        if (attr == INVALID_FILE_ATTRIBUTES){
-            exit(1);
-        }
-        if (attr & FILE_ATTRIBUTE_DIRECTORY){
+        if (is_folder(argv[2])){
             send_folder(tcp_fd,argv[2]);
         }
         else{

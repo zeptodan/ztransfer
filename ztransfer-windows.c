@@ -75,4 +75,18 @@ int send_folder(int tcp_fd,char* path){
         }
         free(path_with_name);
     }while(FindNextFileA(h,&f));
+    return 0;
+}
+bool is_folder(char* path){
+    DWORD attr = GetFileAttributesA(path);
+        if (attr == INVALID_FILE_ATTRIBUTES){
+            print_error("invalid path");
+            exit(1);
+        }
+        if (attr & FILE_ATTRIBUTE_DIRECTORY){
+            return true;
+        }
+        else{
+            return false;
+        }
 }
