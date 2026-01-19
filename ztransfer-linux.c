@@ -11,7 +11,9 @@ int close_socket(int socket){
     return 0;
 }
 uint64_t get_file_size(char* path){
-    return be64toh();
+    struct stat st;
+    stat(path,&st);
+    return htobe64(st.st_size);
 }
 int create_folder(char* path){
     mkdir(path, 0755);

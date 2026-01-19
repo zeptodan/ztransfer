@@ -136,7 +136,7 @@ int discovery(){
     }
     printf("my name is %s\n",hostname);
     int name_len = strlen(hostname);
-    inet_pton(AF_INET,"192.168.137.255",&(broadcast_addr.sin_addr));
+    inet_pton(AF_INET,"172.26.207.255",&(broadcast_addr.sin_addr));
     if (listen(tcp_fd,1)==-1){
         printf("could not listen");
         exit(1);
@@ -201,7 +201,18 @@ int listen_to_discovery(){
 int send_metadata(char is_file,int tcp_fd,char* path){
     static int abs_len = -1;
     if(abs_len == -1){
-        abs_len = strlen(path);
+        int i;
+        int arg_len = strlen(path);
+        for (i = arg_len;i > -1;i--){
+            if(path[i] == SEP){
+                break;
+            }
+        }
+        if (i == -1){
+            printf("invalid path %s\n",path);
+            exit(1);
+        }
+        abs_len = i;
     }
     *buf = is_file;
     if (is_file){
@@ -217,16 +228,18 @@ int send_metadata(char is_file,int tcp_fd,char* path){
 }
 Metadata receive_metadata(int tcp_fd){
     int read = 0;
+    int bytes;
     while (read != METADATA){
-        read += recv(tcp_fd,buf,METADATA - read,0);
-        if (read != 0 && buf[0] == 2){
+        bytes = recv(tcp_fd,buf+read,METADATA - read,0);
+        if (bytes != 0 && buf[0] == 2){
             Metadata data = {0,2,NULL};
             return data;
         }
-        if (read <= 0){
+        if (bytes <= 0){
             print_error("recv metadata");
             break;
         }
+        read+=bytes;
     }
     char is_file = *buf;
     uint64_t size;
@@ -234,9 +247,10 @@ Metadata receive_metadata(int tcp_fd){
     size = my_ntohll(size);
     uint32_t len;
     memcpy(&len,buf + sizeof(uint64_t) + 1,sizeof(uint32_t));
+    len = ntohl(len);
     read = 0;
     while (read != len){
-        read += recv(tcp_fd,buf,len - read,0);
+        read += recv(tcp_fd,buf+read,len - read,0);
     }
     char* path = malloc(len + 1);
     buf[len] = '\0';
@@ -245,12 +259,12 @@ Metadata receive_metadata(int tcp_fd){
     return data;
 }
 int receive_file(int tcp_fd,uint64_t size,char* path){
-    FILE* file = fopen(path,"w");
+    FILE* file = fopen(path,"wb");
     uint64_t tot_bytes = 0;
     int bytes;
     START_TIMER(timer1);
     while (tot_bytes !=size){
-        bytes = recv(tcp_fd,buf,BUF_SIZE,0);
+        bytes = recv(tcp_fd,buf,min(BUF_SIZE,(size - tot_bytes)),0);
         if(bytes == 0){
             break;
         }
@@ -269,15 +283,14 @@ int receive_folder(int tcp_fd,char* path){
         if(data.is_file == 2){
             break;
         }
-        path_with_name = malloc(len + strlen(data.path) + 2);
+        path_with_name = malloc(len + strlen(data.path) + 1);
         strcpy(path_with_name,path);
-        path_with_name[len] = SEP;
-        strcpy(path_with_name + len + 1,data.path);
+        strcpy(path_with_name + len,data.path);
         if(data.is_file == 1){
             receive_file(tcp_fd,data.size,path_with_name);
         }
         else{
-            create_folder(data.path);
+            create_folder(path_with_name);
         }
         free(path_with_name);
     }

@@ -61,7 +61,8 @@ typedef BOOL (WINAPI *PFN_TRANSMITFILE)(
 #include<fcntl.h>
 #define SHUTDOWN_BOTH SHUT_RDWR
 #define SEP '/'
-#define my_ntohll(number) htobe64(number)
+#define my_ntohll(number) be64toh(number)
+#define min(a,b) (((a) < (b)) ? (a) : (b))
 #endif
 #define MAX_BUF 256
 #define PORT 4000

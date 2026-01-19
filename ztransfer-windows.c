@@ -30,7 +30,6 @@ int create_folder(char* path){
 int send_file(int tcp_fd,char* path){
     send_metadata(1,tcp_fd,path);
     u_long mode = 1;
-    ioctlsocket(tcp_fd, FIONBIO, &mode);
     PFN_TRANSMITFILE pTransmitFile;
     pTransmitFile = (PFN_TRANSMITFILE)GetProcAddress(
         GetModuleHandleW(L"mswsock.dll"), 
@@ -44,25 +43,30 @@ int send_file(int tcp_fd,char* path){
     OVERLAPPED ov = {0};
     ov.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
     START_TIMER(timer1);
-    bool ok = pTransmitFile(tcp_fd,file,0,0,&ov,NULL,TF_USE_KERNEL_APC);
+    bool ok = pTransmitFile(tcp_fd, file, 0, 0, &ov, NULL, 0);
     WaitForSingleObject(ov.hEvent, INFINITE);
-    DWORD ignored;
-    GetOverlappedResult((HANDLE)tcp_fd, &ov, &ignored, FALSE);
-    END_TIMER(timer1);
-    if(!ok){
+    if(!ok && WSAGetLastError() != ERROR_IO_PENDING){
         print_error("transmit file");
         exit(1);
     }
+    DWORD ignored;
+    GetOverlappedResult((HANDLE)tcp_fd, &ov, &ignored, FALSE);
+    END_TIMER(timer1);
     return 0;
 }
 int send_folder(int tcp_fd,char* path){
     send_metadata(0,tcp_fd,path);
+    char* search = malloc(strlen(path) + 4);
+    snprintf(search,strlen(path)+ 4,"%s\\*",path);
     WIN32_FIND_DATAA f;
-    HANDLE h = FindFirstFileA(path,&f);
+    HANDLE h = FindFirstFileA(search,&f);
     char* path_with_name;
     do {
         if (!strcmp(f.cFileName, ".") || !strcmp(f.cFileName, ".."))
             continue;
+        if (f.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) {
+            continue;
+        }
         path_with_name = malloc(strlen(path) + strlen(f.cFileName) + 2);
         strcpy(path_with_name,path);
         path_with_name[strlen(path)] = SEP;
