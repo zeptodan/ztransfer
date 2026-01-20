@@ -94,3 +94,32 @@ bool is_folder(char* path){
             return false;
         }
 }
+int add_all_addrs(Broadcast_addrs* addrs){
+    IP_ADAPTER_INFO adapter[16];
+    DWORD len = sizeof(adapter);
+    DWORD status = GetAdaptersInfo(adapter,&len);
+    if(status !=ERROR_SUCCESS){
+        print_error("adapter error");
+        exit(1);
+    }
+    PIP_ADAPTER_INFO info = adapter;
+    struct in_addr mask,ip;
+    uint32_t ip_h,mask_h,broadcast_h;
+    char broadcast[INET_ADDRSTRLEN];
+    while(info){
+        inet_pton(AF_INET,info->IpAddressList.IpAddress.String,&ip);
+        inet_pton(AF_INET,info->IpAddressList.IpMask.String,&mask);
+        ip_h = ntohl(ip.S_un.S_addr);
+        mask_h = ntohl(mask.S_un.S_addr);
+        broadcast_h = ip_h | (~mask_h);
+        broadcast_h = htonl(broadcast_h);
+        if(ip_h ==0 || mask_h ==0){
+            info = info->Next;
+            continue;
+        }
+        inet_ntop(AF_INET,&broadcast_h,broadcast,sizeof(broadcast));
+        addrs->add(addrs,broadcast);
+        info = info->Next;
+    }
+    return 0;
+}

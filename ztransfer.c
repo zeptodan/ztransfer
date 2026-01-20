@@ -123,10 +123,9 @@ int discovery(){
     int tcp_fd = get_tcp_listener();
     int udp_fd = get_broadcast_socket();
     struct sockaddr_storage their_addr;
-    struct sockaddr_in broadcast_addr;
+    Broadcast_addrs* addrs = addrs_list_constructor();
+    add_all_addrs(addrs);
     int size = sizeof their_addr;
-    broadcast_addr.sin_family = AF_INET;
-    broadcast_addr.sin_port = htons(PORT);
     struct timeval time;
     int new_fd;
     char* hostname = malloc(MAX_NAME);
@@ -136,7 +135,6 @@ int discovery(){
     }
     printf("my name is %s\n",hostname);
     int name_len = strlen(hostname);
-    inet_pton(AF_INET,"172.26.207.255",&(broadcast_addr.sin_addr));
     if (listen(tcp_fd,1)==-1){
         printf("could not listen");
         exit(1);
@@ -146,7 +144,7 @@ int discovery(){
         FD_SET(tcp_fd,&my_set);
         time.tv_sec = 0;
         time.tv_usec = 10000;
-        send_udp_packet(udp_fd,&broadcast_addr,hostname,name_len);
+        addrs->broadcast(addrs,udp_fd,hostname,name_len);
         select(tcp_fd + 1,&my_set,NULL, NULL,&time);
         if(FD_ISSET(tcp_fd,&my_set)){
             if ((new_fd = accept(tcp_fd,(struct sockaddr*)&their_addr,& size)) == -1){
@@ -189,7 +187,7 @@ int listen_to_discovery(){
             for(int i = 0; i < list->size;i++){
                 printf("name: %s\n",list->broadcasts[i].name);
             }
-            break;
+            //break;
         }
         //list->clean(list);
     }

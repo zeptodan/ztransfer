@@ -33,6 +33,7 @@
 #include<mswsock.h>
 #include<WinSock2.h>
 #include<WS2tcpip.h>
+#include<iphlpapi.h>
 #define SHUTDOWN_BOTH SD_BOTH
 #define SEP '\\'
 #define my_ntohll(number) ntohll(number)
@@ -76,9 +77,10 @@ typedef BOOL (WINAPI *PFN_TRANSMITFILE)(
 #define METADATA (sizeof(uint64_t) +sizeof(uint32_t) + 1)
 typedef struct Broadcast_addrs{
     int size;
-    char** addrs;
-    int (*add)(struct Broadcast_addrs,char* addr);
-    int (*broadcast)(struct Broadcast_addrs);
+    struct sockaddr_in* addrs;
+    int (*add)(struct Broadcast_addrs*,char*);
+    int (*broadcast)(struct Broadcast_addrs*,int,char*,int);
+    int (*free_addrs)(struct Broadcast_addrs*);
 } Broadcast_addrs;
 typedef struct Metadata{
     uint64_t size;
@@ -114,3 +116,5 @@ int send_file(int tcp_fd,char* path);
 int send_folder(int tcp_fd,char* path);
 int send_metadata(char is_file,int tcp_fd,char* path);
 bool is_folder(char* path);
+int add_all_addrs(Broadcast_addrs*);
+Broadcast_addrs* addrs_list_constructor();

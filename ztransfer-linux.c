@@ -73,3 +73,6 @@ bool is_folder(char* path){
         exit(1);
     }
 }
+int add_all_addrs(Broadcast_addrs* addrs){
+
+}
