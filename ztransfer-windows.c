@@ -81,11 +81,11 @@ int send_folder(int tcp_fd,char* path){
     }while(FindNextFileA(h,&f));
     return 0;
 }
-bool is_folder(char* path){
+int is_folder(char* path){
     DWORD attr = GetFileAttributesA(path);
         if (attr == INVALID_FILE_ATTRIBUTES){
             print_error("invalid path");
-            exit(1);
+            return 2;
         }
         if (attr & FILE_ATTRIBUTE_DIRECTORY){
             return true;

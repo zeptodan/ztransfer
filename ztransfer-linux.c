@@ -59,7 +59,7 @@ int send_folder(int tcp_fd,char* path){
     }
     return 0;
 }
-bool is_folder(char* path){
+int is_folder(char* path){
     struct stat st;
     stat(path,&st);
     if (S_ISDIR(st.st_mode)){
@@ -70,7 +70,7 @@ bool is_folder(char* path){
     }
     else{
         print_error("invalid path");
-        exit(1);
+        return 2;
     }
 }
 int add_all_addrs(Broadcast_addrs* addrs){
@@ -85,7 +85,7 @@ int add_all_addrs(Broadcast_addrs* addrs){
             continue;
         ip = (struct sockaddr_in*)ifaddr->ifa_addr;
         mask = (struct sockaddr_in*)ifaddr->ifa_netmask;
-        uint32_t bcast =ip->sin_addr.s_addr | ~mask->sin_addr.s_addr;
+        uint32_t bcast =htonl(ntohl(ip->sin_addr.s_addr) | ~ntohl(mask->sin_addr.s_addr));
         inet_ntop(AF_INET,&bcast,broadcast,sizeof(broadcast));
         addrs->add(addrs,broadcast);
     }

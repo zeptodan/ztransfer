@@ -187,7 +187,7 @@ int listen_to_discovery(){
             for(int i = 0; i < list->size;i++){
                 printf("name: %s\n",list->broadcasts[i].name);
             }
-            //break;
+            break;
         }
         //list->clean(list);
     }
@@ -302,10 +302,11 @@ int main(int argc, char* argv[]){
     int tcp_fd;
     if (strcmp(argv[1],"broadcast") == 0){
         tcp_fd = discovery();
-        if (is_folder(argv[2])){
+        int isfolder = is_folder(argv[2]);
+        if (isfolder == 1){
             send_folder(tcp_fd,argv[2]);
         }
-        else{
+        else if (isfolder == 0){
             send_file(tcp_fd,argv[2]);
         }
         char stop = 2;
