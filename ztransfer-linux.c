@@ -74,5 +74,20 @@ bool is_folder(char* path){
     }
 }
 int add_all_addrs(Broadcast_addrs* addrs){
-
+    struct ifaddrs* ifaddrs,*ifaddr;
+    struct sockaddr_in *ip,*mask;
+    char broadcast[INET_ADDRSTRLEN];
+    getifaddrs(&ifaddrs);
+    for(ifaddr = ifaddrs;ifaddr;ifaddr = ifaddr->ifa_next){
+        if(!ifaddr->ifa_addr)
+            continue;
+        if(ifaddr->ifa_addr->sa_family != AF_INET)
+            continue;
+        ip = (struct sockaddr_in*)ifaddr->ifa_addr;
+        mask = (struct sockaddr_in*)ifaddr->ifa_netmask;
+        uint32_t bcast =ip->sin_addr.s_addr | ~mask->sin_addr.s_addr;
+        inet_ntop(AF_INET,&bcast,broadcast,sizeof(broadcast));
+        addrs->add(addrs,broadcast);
+    }
+    return 0;
 }

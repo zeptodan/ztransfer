@@ -1,8 +1,6 @@
 #include"ztransfer-lib.h"
 int broadcast(Broadcast_addrs* addrs,int udp_fd,char* msg,int size){
     for (int i = 0;i < addrs->size;i++){
-        char address[INET_ADDRSTRLEN];
-        inet_ntop(AF_INET,&addrs->addrs[i].sin_addr.S_un.S_addr,address,sizeof(address));
         sendto(udp_fd,msg,size,0,(struct sockaddr*)&(addrs->addrs[i]), sizeof(struct sockaddr_in));
     }
     return 0;

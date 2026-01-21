@@ -60,6 +60,7 @@ typedef BOOL (WINAPI *PFN_TRANSMITFILE)(
 #include<endian.h>
 #include<dirent.h>
 #include<fcntl.h>
+#include<ifaddrs.h>
 #define SHUTDOWN_BOTH SHUT_RDWR
 #define SEP '/'
 #define my_ntohll(number) be64toh(number)
