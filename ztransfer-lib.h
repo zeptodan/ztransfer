@@ -4,6 +4,7 @@
 #include<string.h>
 #include<time.h>
 #include<stdlib.h>
+#include<curses.h>
 #ifdef DEBUG
 #ifdef _WIN32
 #define START_TIMER(name) double name##_elapsed_seconds; \
@@ -34,7 +35,6 @@
 #include<WinSock2.h>
 #include<WS2tcpip.h>
 #include<iphlpapi.h>
-#include<ncurses/ncurses.h>
 #define SHUTDOWN_BOTH SD_BOTH
 #define SEP '\\'
 #define my_ntohll(number) ntohll(number)
