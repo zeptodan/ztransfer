@@ -1,6 +1,6 @@
 #include"ztransfer-lib.h"
 void print_error(char* msg){
-    printf("%s: %d\n",msg,WSAGetLastError());
+    printf("%s: WSA ERROR %d\n",msg,WSAGetLastError());
 }
 void window_startup(){
     WSADATA wsadata;

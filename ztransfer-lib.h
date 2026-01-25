@@ -37,6 +37,7 @@
 #include<iphlpapi.h>
 #define SHUTDOWN_BOTH SD_BOTH
 #define SEP '\\'
+#define NOT_SEP '/'
 #define my_ntohll(number) ntohll(number)
 typedef BOOL (WINAPI *PFN_TRANSMITFILE)(
     SOCKET hSocket,
@@ -64,6 +65,7 @@ typedef BOOL (WINAPI *PFN_TRANSMITFILE)(
 #include<ifaddrs.h>
 #define SHUTDOWN_BOTH SHUT_RDWR
 #define SEP '/'
+#define NOT_SEP '\\'
 #define my_ntohll(number) be64toh(number)
 #define min(a,b) (((a) < (b)) ? (a) : (b))
 #endif

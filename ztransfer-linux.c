@@ -1,6 +1,6 @@
 #include"ztransfer-lib.h"
 void print_error(char* msg){
-    printf("%s",msg);
+    printf("%s ERRORNO ",msg);
     perror("");
 }
 void window_startup(){
@@ -31,7 +31,7 @@ int send_file(int tcp_fd,char* path){
         n = sendfile(tcp_fd,fd,&offset,size - offset);
         if (n <=0){
             print_error("sendfile");
-            exit(1);
+            endwin();exit(1);
         }
     }
     return 0;
