@@ -48,7 +48,6 @@ int get_udp_listener(){
     freeaddrinfo(res);
     return sockfd;
 }
-
 int get_tcp_listener(){
     struct addrinfo info, *res, *p;
     memset(&info,0,sizeof info);
@@ -68,28 +67,28 @@ int get_tcp_listener(){
             continue;
         }
         if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR,(const char*)&yes,sizeof(int)) == -1){
-            printf("error in sockopt");
+            print_error("error in sockopt");
             close_socket(sockfd);
-            endwin();exit(1);
+            continue;
         }
         if (setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF,(const char*)&size,sizeof(int)) == -1){
-            printf("error in sockopt");
+            print_error("error in sockopt");
             close_socket(sockfd);
-            endwin();exit(1);
+            continue;
         }
         if (setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY,(const char*)&yes,sizeof(int)) == -1){
-            printf("error in sockopt");
+            print_error("error in sockopt");
             close_socket(sockfd);
-            endwin();exit(1);
+            continue;
         }
         if (bind(sockfd,p->ai_addr, p->ai_addrlen)== -1){
+            print_error("could not bind");
             close_socket(sockfd);
             continue;
         }
         break;
     }
     if (p == NULL){
-        printf("could not bind");
         endwin();exit(1);
     }
     freeaddrinfo(res);
@@ -420,18 +419,36 @@ Metadata receive_metadata(int tcp_fd){
     return data;
 }
 int receive_file(int tcp_fd,uint64_t size,char* path){
+    static int linenum = 4;
+    int x = getmaxx(stdscr);
     FILE* file = fopen(path,"wb");
     uint64_t tot_bytes = 0;
     int bytes;
+    int percent;
+    endwin();
     START_TIMER(timer1);
     while (tot_bytes !=size){
+        START_TIMER(timer2);
+        mvprintw(linenum,0,"%s",path);
+        percent = (tot_bytes / (float)size) *100;
+        printw(" (%d%%)",percent);
+        percent = (percent / 100.0) * 30;
+        mvprintw(linenum+1,0,"[%.*s",percent,"##############################");
+        printw("%.*s]",30-percent,"------------------------------");
+        refresh();
+        END_TIMER(timer2);
+        START_TIMER(timer3);
         bytes = recv(tcp_fd,buf,min(BUF_SIZE,(size - tot_bytes)),0);
+        END_TIMER(timer3);
         if(bytes == 0){
             break;
         }
+        START_TIMER(timer4);
         fwrite(buf,sizeof(char),bytes,file);
+        END_TIMER(timer4);
         tot_bytes += bytes;
     }
+    linenum += 2;
     END_TIMER(timer1);
     fclose(file);
     return 0;
@@ -470,6 +487,7 @@ int main(int argc, char* argv[]){
     char* strings[3] = {"Broadcast","Listen","Cancel"};
     int option = make_choice(3,-1,3,strings);
     if(option==2){
+        endwin();
         return 0;
     }
     window_startup();
@@ -488,6 +506,10 @@ int main(int argc, char* argv[]){
     switch(option){
         case 0:
             tcp_fd = discovery();
+            clear();
+            mvprintw(0,0,"ztransfer");
+            mvprintw(2,0,"Sending...");
+            refresh();
             if (isfolder == 1){
                 send_folder(tcp_fd,pathbuf);
             }
@@ -496,16 +518,18 @@ int main(int argc, char* argv[]){
             }
             char stop = 2;
             send(tcp_fd,&stop,1,0);
+            endwin();
             shutdown(tcp_fd,SHUTDOWN_BOTH);
             break;
         case 1:
             tcp_fd = listen_to_discovery();
+            clear();
+            mvprintw(0,0,"ztransfer");
+            mvprintw(2,0,"receiving...");
+            refresh();
             receive_folder(tcp_fd,pathbuf);
-            shutdown(tcp_fd,SHUTDOWN_BOTH);
-            break;
-        case 2:
             endwin();
-            return 0;
+            shutdown(tcp_fd,SHUTDOWN_BOTH);
             break;
     }
 }
