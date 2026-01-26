@@ -31,7 +31,7 @@ int send_file(int tcp_fd,char* path){
         n = sendfile(tcp_fd,fd,&offset,size - offset);
         if (n <=0){
             print_error("sendfile");
-            endwin();exit(1);
+            exit(1);
         }
     }
     return 0;
