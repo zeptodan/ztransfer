@@ -77,7 +77,7 @@ typedef BOOL (WINAPI *PFN_TRANSMITFILE)(
 #define STR(x) #x
 #define XSTR(x) STR(x)
 #define PORT_STRING XSTR(PORT)
-#define BUF_SIZE (1 << 16)
+#define BUF_SIZE (1 << 17)
 #define METADATA (sizeof(uint64_t) +sizeof(uint32_t) + 1)
 typedef struct Broadcast_addrs{
     int size;

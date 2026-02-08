@@ -61,7 +61,7 @@ int get_tcp_listener(){
     }
     int sockfd;
     int yes = 1;
-    int size = 1 << 20;
+    int size = 1 << 23;
     for(p = res; p != NULL; p = p->ai_next){
         if ((sockfd = socket(p->ai_family,p->ai_socktype,p->ai_protocol)) == -1){
             continue;
@@ -101,7 +101,7 @@ int get_tcp_socket(struct sockaddr_storage* their_addr){
     connect_addr.sin_family = ((struct sockaddr_in*)their_addr)->sin_family;
     connect_addr.sin_addr = ((struct sockaddr_in*)their_addr)->sin_addr; 
     connect_addr.sin_port = htons(PORT);
-    int size = 1 << 20;
+    int size = 1 << 23;
     if ((tcp_fd = socket(AF_INET,SOCK_STREAM,0)) == -1){
         print_error("socket");
         exit(1);
